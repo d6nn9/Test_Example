@@ -1,0 +1,43 @@
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <form>
+        <label for="myfile">Select a file:</label>
+        <input id="myfile" type="file">
+        <button type=" submit">Send</button>
+    </form>
+</body>
+<script>
+
+    document.addEventListener("DOMContentLoaded", () => {
+
+        const file_attach = document.querySelector("input");
+
+        const postData = async (url) => {
+            let fetchResponse = await fetch(url, {
+                method: "POST",
+                headers: {
+                    'Content-Type': 'image/png',
+                },
+                body: file_attach.files[0]
+            });
+            return await fetchResponse.text();
+        };
+
+        const form = document.querySelector("form");
+
+        form.addEventListener("submit", function (e) {
+            e.preventDefault();
+            const filename = file_attach.files[0].name
+            postData(`/resize?filename=${filename}`);
+        });
+    });</script>
+
+</html>
