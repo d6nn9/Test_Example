@@ -36,7 +36,7 @@
         form.addEventListener("submit", function (e) {
             e.preventDefault();
             const filename = file_attach.files[0].name
-            postData(`/resize?filename=${filename}`);
+            postData(`/?filename=${filename}`);
         });
     });</script>
 

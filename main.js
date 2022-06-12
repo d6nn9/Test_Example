@@ -8,7 +8,6 @@ const __dirname = path.dirname(__filename);
 
 export const app = express();
 
-app.use(bodyParser.json());
 app.use(express.static(__dirname + '/public'));
-app.post('/resize', resize);
-app.listen(8000);
+app.post('/resize', bodyParser.json(), resize);
+app.listen(process.env.PORT);

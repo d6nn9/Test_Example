@@ -2,24 +2,27 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { Buffer } from 'buffer';
+import { reviewSizeImg, getSizePng } from './common/common.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-
-
 const PATH = path.join(__dirname, 'temps');
-
 const storageIsExist = fs.existsSync(PATH);
 if (!storageIsExist) {
   fs.mkdirSync(PATH);
 }
 
+const HEX = 16;
+const LENGTH_HEX_STRING = 8;
+const BAIT_4 = 4;
+const BAIT_16 = 16;
+const BAIT_24 = 24;
+
+
 const CONFIG = {
-  maxFileSize: 10485760,
-  allowedMimeTypes: [
-    'image/png',
-  ],
+  maxFileSize: process.env.MAX_FILE_SIZE,
+  allowedMimeTypes: ['image/png'],
   allowedExtensions: ['png'],
   allowedMaxSize: {
     large: [2048, 2048], medium: [1024, 1024], thumb: [300, 300]
@@ -57,38 +60,40 @@ export const resize = (req, res) => {
       res.end();
     }
 
-
     const writableStream = fs.createWriteStream(path.join(PATH, filename));
     writableStream.on('error', (err) => console.error(err));
 
     req.on('readable', () => {
+
       const value = req.read();
+
       const imgSize = getSizePng(value);
-      const resolvedSize = reviewSizeImg(imgSize, CONFIG.allowedMaxSize);
-      const buf1 = Buffer.alloc(16, value, 'hex');
+      const resolvedSize = reviewSizeImg(
+        imgSize,
+        CONFIG.allowedMaxSize,
+        CONFIG.allowedMaxSize.large
+      );
 
-      const buf2 = Buffer.alloc(4);
-      const numHex1 = resolvedSize[0].toString(16).padStart(8, '0');
-      buf2.write(numHex1,
-        (buf2.length - numHex1.length / 2),
-        buf2.length, 'hex');
-      Buffer.from(resolvedSize[0].toString(16), 'hex');
+      const buf1 = Buffer.alloc(BAIT_16, value, 'hex');
+      const buf2 = value.subarray(BAIT_24, value.length);
 
-      const numHex2 = resolvedSize[1].toString(16).padStart(8, '0');
-      const buf3 = Buffer.alloc(4);
-      buf3.write(numHex2,
-        (buf3.length - numHex2.length / 2),
-        buf3.length, 'hex');
+      resolvedSize.forEach((el, i) => {
+        const buf = Buffer.alloc(BAIT_4);
+        el = el.toString(HEX).padStart(LENGTH_HEX_STRING, '0');
+        buf.write(el, (buf.length - el.length / 2), buf.length, 'hex');
+        resolvedSize[i] = buf;
+      });
+      const [side1, side2] = resolvedSize;
 
-      const buf4 = value.subarray(24, value.length);
-      const chunkLength = buf1.length + buf2.length + buf3.length + buf4.length;
-      const chunk = Buffer.concat([buf1, buf2, buf3, buf4], chunkLength);
+      const chunkLength = buf1.length + side1.length +
+        side2.length + buf2.length;
+      const chunk = Buffer.concat([buf1, side1, side2, buf2],
+        chunkLength);
 
       writableStream.write(chunk);
       req.pipe(writableStream);
       req.removeAllListeners('readable');
     });
-
 
     let dataLength = 0;
     req.on('data', (chunk) => {
@@ -108,45 +113,3 @@ export const resize = (req, res) => {
   }
 };
 
-function getSizePng(chunk) {
-  const meta = Buffer.alloc(24, chunk, 'hex');
-  console.log(meta);
-  let width = meta.subarray(16, 20).toString('hex');
-  let height = meta.subarray(20, 24).toString('hex');
-  width = parseInt(width, 16);
-  height = parseInt(height, 16);
-  if (typeof width === 'number' && typeof height === 'number') {
-    console.log([width, height]);
-    return [width, height];
-  }
-  return null;
-}
-
-function reviewSizeImg(size, allowedSize) {
-  const keys = Object.keys(allowedSize);
-  const result = [];
-  const lesserSide = Math.min(...size);
-  const bigerSide = Math.max(...size);
-
-  const indexL = size.indexOf(lesserSide);
-  const indexB = size.indexOf(bigerSide);
-  for (const key of keys) {
-    if (size[indexL] <= allowedSize[key][0]) {
-      result.push(allowedSize[key]);
-    }
-  }
-  if (result[0]) {
-    const resolvedSize = result.reduce((prev, cur) => {
-      if (prev[0] > cur[0]) {
-        return cur;
-      }
-    });
-    resolvedSize[indexL] = size[indexL];
-    resolvedSize[indexB] = size[indexB] >= resolvedSize[indexB] ?
-      resolvedSize[indexB] :
-      size[indexB];
-    return resolvedSize;
-  }
-  size = allowedSize.large[0];
-  return reviewSizeImg(size, allowedSize);
-}
